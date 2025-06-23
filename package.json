@@ -1,0 +1,26 @@
+{
+  "name": "twitter-image-uploader",
+  "version": "1.0.0",
+  "description": "Express app to authenticate with Twitter and upload images",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "dev": "node app.js",
+    "start:social": "REDIRECT_URI=http://localhost:8000/api/v1/x/login/social-media node app.js",
+    "start:stepper": "REDIRECT_URI=http://localhost:8000/api/v1/x/login/stepper node app.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "multer": "^1.4.5-lts.1",
+    "axios": "^1.6.0",
+    "express-session": "^1.17.3"
+  },
+  "keywords": [
+    "twitter",
+    "oauth",
+    "image-upload",
+    "express"
+  ],
+  "author": "",
+  "license": "MIT"
+}
