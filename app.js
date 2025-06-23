@@ -1,6 +1,7 @@
 const express = require('express');
 const multer = require('multer');
 const axios = require('axios');
+const FormData = require('form-data');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -25,8 +26,8 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Twitter API credentials - replace with your actual credentials
-const TWITTER_CLIENT_ID = 'OEVEVlM1MUFtQmpHMXVhbFYzbDU6MTpjaQ';
-const TWITTER_CLIENT_SECRET = 'TwOTnLogIBsYX-0IcMPrjV58mMvK2KywXaLXUspaWrgGhjOGfv';
+const TWITTER_CLIENT_ID = 'your_client_id';
+const TWITTER_CLIENT_SECRET = 'your_client_secret';
 
 // Use environment variable for redirect URI or default to one of your configured URLs
 const REDIRECT_URI = process.env.REDIRECT_URI || 'http://localhost:8000/api/v1/x/login/social-media';
@@ -141,7 +142,6 @@ app.get(getCallbackPath(), async (req, res) => {
         'Authorization': `Basic ${Buffer.from(`${TWITTER_CLIENT_ID}:${TWITTER_CLIENT_SECRET}`).toString('base64')}`
       }
     });
-    console.log("successfully got access token: ",tokenResponse.data.access_token);
     
     req.session.accessToken = tokenResponse.data.access_token;
     req.session.refreshToken = tokenResponse.data.refresh_token;
@@ -166,70 +166,124 @@ app.post('/upload', upload.single('image'), async (req, res) => {
   try {
     // Read the uploaded file
     const imageBuffer = fs.readFileSync(req.file.path);
-    console.log("Checking token: ",req.session.accessToken)
-    // Step 1: Upload media to Twitter
-    const mediaUploadResponse = await axios.post(
-      'https://upload.twitter.com/1.1/media/upload.json',
-      {
-        media_data: imageBuffer.toString('base64')
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${req.session.accessToken}`,
-          'Content-Type': 'application/x-www-form-urlencoded'
+    
+    // First, let's try the v2 approach with base64 encoding
+    const base64Image = imageBuffer.toString('base64');
+    
+    try {
+      // Try v1.1 media upload with proper form data
+      const FormData = require('form-data');
+      const formData = new FormData();
+      formData.append('media_data', base64Image);
+      
+      const mediaUploadResponse = await axios.post(
+        'https://upload.twitter.com/1.1/media/upload.json',
+        formData,
+        {
+          headers: {
+            'Authorization': `Bearer ${req.session.accessToken}`,
+            ...formData.getHeaders()
+          }
         }
-      }
-    );
-    
-    const mediaId = mediaUploadResponse.data.media_id_string;
-    console.log("Generated media id: ",mediaId);
-    
-    // Step 2: Create tweet with media
-    const tweetData = {
-      text: req.body.text || '',
-      media: {
-        media_ids: [mediaId]
-      }
-    };
-    
-    const tweetResponse = await axios.post(
-      'https://api.twitter.com/2/tweets',
-      tweetData,
-      {
-        headers: {
-          'Authorization': `Bearer ${req.session.accessToken}`,
-          'Content-Type': 'application/json'
+      );
+      
+      const mediaId = mediaUploadResponse.data.media_id_string;
+      
+      // Step 2: Create tweet with media
+      const tweetData = {
+        text: req.body.text || '',
+        media: {
+          media_ids: [mediaId]
         }
-      }
-    );
-    
-    // Clean up uploaded file
-    fs.unlinkSync(req.file.path);
-    
-    res.send(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-          <title>Upload Success</title>
-          <style>
-              body { font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }
-              .container { background: #f5f5f5; padding: 30px; border-radius: 10px; text-align: center; }
-              .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; padding: 20px; border-radius: 5px; margin: 20px 0; }
-              button { background: #1da1f2; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; margin: 10px; }
-          </style>
-      </head>
-      <body>
-          <div class="container">
-              <div class="success">
-                  <h2>✅ Image posted successfully!</h2>
-                  <p>Tweet ID: ${tweetResponse.data.data.id}</p>
+      };
+      
+      const tweetResponse = await axios.post(
+        'https://api.twitter.com/2/tweets',
+        tweetData,
+        {
+          headers: {
+            'Authorization': `Bearer ${req.session.accessToken}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+      
+      // Clean up uploaded file
+      fs.unlinkSync(req.file.path);
+      
+      res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Upload Success</title>
+            <style>
+                body { font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }
+                .container { background: #f5f5f5; padding: 30px; border-radius: 10px; text-align: center; }
+                .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; padding: 20px; border-radius: 5px; margin: 20px 0; }
+                button { background: #1da1f2; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; margin: 10px; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="success">
+                    <h2>✅ Image posted successfully!</h2>
+                    <p>Tweet ID: ${tweetResponse.data.data.id}</p>
+                </div>
+                <button onclick="location.href='/'">Upload Another</button>
+                <button onclick="window.open('https://twitter.com/home', '_blank')">View on Twitter</button>
+            </div>
+        </body>
+        </html>
+      `);
+      
+    } catch (mediaError) {
+      console.error('Media upload error:', mediaError.response?.data || mediaError.message);
+      
+      // If media upload fails, try creating a text-only tweet
+      if (req.body.text) {
+        console.log('Attempting text-only tweet...');
+        const textTweetResponse = await axios.post(
+          'https://api.twitter.com/2/tweets',
+          { text: req.body.text },
+          {
+            headers: {
+              'Authorization': `Bearer ${req.session.accessToken}`,
+              'Content-Type': 'application/json'
+            }
+          }
+        );
+        
+        // Clean up uploaded file
+        fs.unlinkSync(req.file.path);
+        
+        res.send(`
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <title>Partial Success</title>
+              <style>
+                  body { font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }
+                  .container { background: #f5f5f5; padding: 30px; border-radius: 10px; text-align: center; }
+                  .warning { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; padding: 20px; border-radius: 5px; margin: 20px 0; }
+                  button { background: #1da1f2; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; margin: 10px; }
+              </style>
+          </head>
+          <body>
+              <div class="container">
+                  <div class="warning">
+                      <h2>⚠️ Text posted, but image upload failed</h2>
+                      <p>Tweet ID: ${textTweetResponse.data.data.id}</p>
+                      <p>Error: ${mediaError.response?.data?.detail || mediaError.message}</p>
+                  </div>
+                  <button onclick="location.href='/'">Try Again</button>
               </div>
-              <button onclick="location.href='/'">Upload Another</button>
-              <button onclick="window.open('https://twitter.com/compose/tweet', '_blank')">View on Twitter</button>
-          </div>
-      </body>
-      </html>
-    `);
+          </body>
+          </html>
+        `);
+      } else {
+        throw mediaError;
+      }
+    }
     
   } catch (error) {
     console.error('Upload error:', error.response?.data || error.message);
