@@ -141,6 +141,7 @@ app.get(getCallbackPath(), async (req, res) => {
         'Authorization': `Basic ${Buffer.from(`${TWITTER_CLIENT_ID}:${TWITTER_CLIENT_SECRET}`).toString('base64')}`
       }
     });
+    console.log("successfully got access token: ",tokenResponse.data.access_token);
     
     req.session.accessToken = tokenResponse.data.access_token;
     req.session.refreshToken = tokenResponse.data.refresh_token;
@@ -165,7 +166,7 @@ app.post('/upload', upload.single('image'), async (req, res) => {
   try {
     // Read the uploaded file
     const imageBuffer = fs.readFileSync(req.file.path);
-    
+    console.log("Checking token: ",req.session.accessToken)
     // Step 1: Upload media to Twitter
     const mediaUploadResponse = await axios.post(
       'https://upload.twitter.com/1.1/media/upload.json',
@@ -181,6 +182,7 @@ app.post('/upload', upload.single('image'), async (req, res) => {
     );
     
     const mediaId = mediaUploadResponse.data.media_id_string;
+    console.log("Generated media id: ",mediaId);
     
     // Step 2: Create tweet with media
     const tweetData = {
